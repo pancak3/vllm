@@ -74,7 +74,11 @@ from vllm.transformers_utils.tokenizers import (
 )
 from vllm.utils import as_list
 
-from .metrics_logger import get_inference_metrics_logger, to_microseconds
+from .metrics_logger import (
+    PostgresMetricsLogger,
+    get_inference_metrics_logger,
+    to_microseconds,
+)
 
 logger = init_logger(__name__)
 
@@ -116,6 +120,9 @@ class OpenAIServingChat(OpenAIServing):
         self.chat_template_content_format: Final = chat_template_content_format
         self.trust_request_chat_template = trust_request_chat_template
         self.enable_log_outputs = enable_log_outputs
+        self._metrics_logger: Optional[PostgresMetricsLogger] = (
+            get_inference_metrics_logger()
+        )
 
         # set up tool use
         self.enable_auto_tools: bool = enable_auto_tools
@@ -1321,13 +1328,11 @@ class OpenAIServingChat(OpenAIServing):
         respond_first_token_at_us: int,
         respond_last_token_at_us: int,
     ) -> None:
-        metrics_logger = get_inference_metrics_logger()
-        if metrics_logger is None:
+        if self._metrics_logger is None:
             return
 
         try:
-            await asyncio.to_thread(
-                metrics_logger.log,
+            await self._metrics_logger.log_async(
                 request_id,
                 start_generation_at_us,
                 respond_first_token_at_us,
@@ -1335,6 +1340,17 @@ class OpenAIServingChat(OpenAIServing):
             )
         except Exception:
             logger.exception("Error logging inference metrics to PostgreSQL")
+
+    def close(self) -> None:
+        if self._metrics_logger is not None:
+            self._metrics_logger.close()
+            self._metrics_logger = None
+
+    def __del__(self) -> None:  # pragma: no cover - best-effort cleanup
+        try:
+            self.close()
+        except Exception:
+            logger.exception("Error closing OpenAIServingChat metrics logger")
 
     async def chat_completion_full_generator(
         self,
