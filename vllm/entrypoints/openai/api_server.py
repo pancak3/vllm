@@ -18,7 +18,8 @@ from argparse import Namespace
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from http import HTTPStatus
-from typing import Annotated, Any, Literal
+from time import time
+from typing import Annotated, Any, Callable, Literal, Optional
 
 import model_hosting_container_standards.sagemaker as sagemaker_standards
 import prometheus_client
@@ -747,13 +748,20 @@ async def create_chat_completion(request: ChatCompletionRequest, raw_request: Re
     metrics_header_format = raw_request.headers.get(
         ENDPOINT_LOAD_METRICS_FORMAT_HEADER_LABEL, ""
     )
+    payload = await raw_request.body()
+    client_side_id = json.loads(payload).get("client_side_id", None)
+    print(
+        f"[{client_side_id}] Received chat completion request [{client_side_id}] at {time()}"
+    )
     handler = chat(raw_request)
     if handler is None:
         return base(raw_request).create_error_response(
             message="The model does not support Chat Completions API"
         )
     try:
-        generator = await handler.create_chat_completion(request, raw_request)
+        generator = await handler.create_chat_completion(
+            request, raw_request, client_side_id=client_side_id
+        )
     except Exception as e:
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR.value, detail=str(e)

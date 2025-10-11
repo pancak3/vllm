@@ -1,0 +1,11 @@
+FROM vllm/vllm-openai:v0.11.0
+
+WORKDIR /tmp/vllm-src
+COPY . /tmp/vllm-src
+
+RUN VLLM_USE_PRECOMPILED=1 \
+	python3 -m pip install --no-deps --force-reinstall --no-build-isolation . \
+	&& rm -rf /tmp/vllm-src
+
+WORKDIR /vllm-workspace
+ENTRYPOINT ["vllm", "serve"]
