@@ -1263,18 +1263,13 @@ class OpenAIServingChat(OpenAIServing):
                     and respond_first_token_at_us is not None
                     and respond_last_token_at_us is not None
                 ):
-                    context_tokens = num_prompt_tokens
-                    generated_tokens = num_completion_tokens
-                    prefix_hits = num_cached_tokens or 0
+                    aggregated_query_hits = num_cached_tokens or 0
                     await self._log_inference_instance(
                         client_side_id,
                         start_generation_at_us,
                         respond_first_token_at_us,
                         respond_last_token_at_us,
-                        prefix_hits,
-                        context_tokens,
-                        generated_tokens,
-                        model_name,
+                        aggregated_query_hits,
                     )
             # print(f"Time generation ended: {time.time()}, duration: {time.time() - start_time}")
             # once the final token is handled, if stream_options.include_usage
@@ -1344,9 +1339,6 @@ class OpenAIServingChat(OpenAIServing):
         respond_first_token_at_us: int,
         respond_last_token_at_us: int,
         prefix_hits: int,
-        context_tokens: int,
-        generated_tokens: int,
-        model_name: str,
     ) -> None:
         if self._metrics_logger is None:
             return
@@ -1358,9 +1350,6 @@ class OpenAIServingChat(OpenAIServing):
                 respond_first_token_at_us,
                 respond_last_token_at_us,
                 prefix_hits,
-                context_tokens,
-                generated_tokens,
-                model_name,
             )
         except Exception:
             logger.exception("Error logging inference metrics to PostgreSQL")
