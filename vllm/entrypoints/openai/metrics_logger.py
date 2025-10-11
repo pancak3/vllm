@@ -54,13 +54,21 @@ class PostgresMetricsLogger:
                 "RequestID",
                 "StartGenerationAt",
                 "RespondFirstTokenAt",
-                "RespondLastTokenAt"
+                "RespondLastTokenAt",
+                "PrefixCacheHits",
+                "ContextTokens",
+                "GeneratedTokens",
+                "ModelName"
             )
-            VALUES (%s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT ("RequestID") DO UPDATE SET
                 "StartGenerationAt" = EXCLUDED."StartGenerationAt",
                 "RespondFirstTokenAt" = EXCLUDED."RespondFirstTokenAt",
-                "RespondLastTokenAt" = EXCLUDED."RespondLastTokenAt"
+                "RespondLastTokenAt" = EXCLUDED."RespondLastTokenAt",
+                "PrefixCacheHits" = EXCLUDED."PrefixCacheHits",
+                "ContextTokens" = EXCLUDED."ContextTokens",
+                "GeneratedTokens" = EXCLUDED."GeneratedTokens",
+                "ModelName" = EXCLUDED."ModelName"
             """
         ).format(
             schema=sql.Identifier(schema),
@@ -148,6 +156,10 @@ class PostgresMetricsLogger:
         start_generation_at_us: int,
         respond_first_token_at_us: int,
         respond_last_token_at_us: int,
+        prefix_hits: int,
+        context_tokens: int,
+        generated_tokens: int,
+        model_name: str,
     ) -> None:
         if psycopg is None or self._closed:
             return
@@ -164,6 +176,10 @@ class PostgresMetricsLogger:
                             start_generation_at_us,
                             respond_first_token_at_us,
                             respond_last_token_at_us,
+                            prefix_hits,
+                            context_tokens,
+                            generated_tokens,
+                            model_name,
                         ),
                     )
                 self._conn.commit()
@@ -183,6 +199,10 @@ class PostgresMetricsLogger:
         start_generation_at_us: int,
         respond_first_token_at_us: int,
         respond_last_token_at_us: int,
+        prefix_hits: int,
+        context_tokens: int,
+        generated_tokens: int,
+        model_name: str,
     ) -> None:
         if psycopg is None or self._closed:
             return
@@ -195,6 +215,10 @@ class PostgresMetricsLogger:
                 start_generation_at_us,
                 respond_first_token_at_us,
                 respond_last_token_at_us,
+                prefix_hits,
+                context_tokens,
+                generated_tokens,
+                model_name,
             )
         )
         task.add_done_callback(self._log_task_done)
@@ -210,6 +234,10 @@ class PostgresMetricsLogger:
         start_generation_at_us: int,
         respond_first_token_at_us: int,
         respond_last_token_at_us: int,
+        prefix_hits: int,
+        context_tokens: int,
+        generated_tokens: int,
+        model_name: str,
     ) -> None:
         try:
             await asyncio.to_thread(
@@ -218,6 +246,10 @@ class PostgresMetricsLogger:
                 start_generation_at_us,
                 respond_first_token_at_us,
                 respond_last_token_at_us,
+                prefix_hits,
+                context_tokens,
+                generated_tokens,
+                model_name,
             )
         except Exception:
             logger.exception("Failed to log inference metrics to PostgreSQL")
