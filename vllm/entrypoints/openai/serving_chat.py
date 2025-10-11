@@ -1255,6 +1255,7 @@ class OpenAIServingChat(OpenAIServing):
 
             last_token_time = time.time()
             # print(f"[{client_side_id}] Respond Last Token: {last_token_time}")
+            num_completion_tokens = sum(previous_num_tokens)
             if client_side_id:
                 respond_last_token_at_us = to_microseconds(last_token_time)
                 if (
@@ -1262,17 +1263,24 @@ class OpenAIServingChat(OpenAIServing):
                     and respond_first_token_at_us is not None
                     and respond_last_token_at_us is not None
                 ):
+                    context_tokens = num_prompt_tokens
+                    generated_tokens = num_completion_tokens
+                    prefix_hits = num_cached_tokens or 0
                     await self._log_inference_instance(
                         client_side_id,
                         start_generation_at_us,
                         respond_first_token_at_us,
                         respond_last_token_at_us,
+                        prefix_hits,
+                        context_tokens,
+                        generated_tokens,
+                        model_name,
                     )
             # print(f"Time generation ended: {time.time()}, duration: {time.time() - start_time}")
             # once the final token is handled, if stream_options.include_usage
             # is sent, send the usage
             if include_usage:
-                completion_tokens = sum(previous_num_tokens)
+                completion_tokens = num_completion_tokens
                 final_usage = UsageInfo(
                     prompt_tokens=num_prompt_tokens,
                     completion_tokens=completion_tokens,
@@ -1295,13 +1303,12 @@ class OpenAIServingChat(OpenAIServing):
                     exclude_unset=True, exclude_none=True
                 )
                 yield f"data: {final_usage_data}\n\n"
-
             # report to FastAPI middleware aggregate usage across all choices
-            num_completion_tokens = sum(previous_num_tokens)
+            completion_token_sum = num_completion_tokens
             request_metadata.final_usage_info = UsageInfo(
                 prompt_tokens=num_prompt_tokens,
-                completion_tokens=num_completion_tokens,
-                total_tokens=num_prompt_tokens + num_completion_tokens,
+                completion_tokens=completion_token_sum,
+                total_tokens=num_prompt_tokens + completion_token_sum,
             )
 
             # Log complete streaming response if output logging is enabled
@@ -1336,6 +1343,10 @@ class OpenAIServingChat(OpenAIServing):
         start_generation_at_us: int,
         respond_first_token_at_us: int,
         respond_last_token_at_us: int,
+        prefix_hits: int,
+        context_tokens: int,
+        generated_tokens: int,
+        model_name: str,
     ) -> None:
         if self._metrics_logger is None:
             return
@@ -1346,6 +1357,10 @@ class OpenAIServingChat(OpenAIServing):
                 start_generation_at_us,
                 respond_first_token_at_us,
                 respond_last_token_at_us,
+                prefix_hits,
+                context_tokens,
+                generated_tokens,
+                model_name,
             )
         except Exception:
             logger.exception("Error logging inference metrics to PostgreSQL")
