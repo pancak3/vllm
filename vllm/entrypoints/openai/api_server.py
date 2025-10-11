@@ -162,6 +162,12 @@ async def lifespan(app: FastAPI):
         finally:
             if task is not None:
                 task.cancel()
+            chat_serving = getattr(app.state, "openai_serving_chat", None)
+            if chat_serving is not None:
+                try:
+                    chat_serving.close()
+                except Exception:
+                    logger.exception("Error closing OpenAIServingChat during shutdown")
     finally:
         # Ensure app state including engine ref is gc'd
         del app.state
@@ -750,9 +756,9 @@ async def create_chat_completion(request: ChatCompletionRequest, raw_request: Re
     )
     payload = await raw_request.body()
     client_side_id = json.loads(payload).get("client_side_id", None)
-    print(
-        f"[{client_side_id}] Received chat completion request [{client_side_id}] at {time()}"
-    )
+    # print(
+    #     f"[{client_side_id}] Received chat completion request [{client_side_id}] at {time()}"
+    # )
     handler = chat(raw_request)
     if handler is None:
         return base(raw_request).create_error_response(
