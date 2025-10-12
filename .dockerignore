@@ -2,6 +2,18 @@
 /build
 dist
 vllm/*.so
+.git
+.github
+benchmarks/
+docs/
+examples/
+shellcheck-stable/
+tests/
+tools/
+mkdocs/
+
+# Large artifacts not needed for build context
+*.ipynb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
