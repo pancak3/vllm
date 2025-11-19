@@ -74,6 +74,12 @@ from vllm.transformers_utils.tokenizers import (
 )
 from vllm.utils import as_list
 
+from .metrics_logger import (
+    PostgresMetricsLogger,
+    get_inference_metrics_logger,
+    to_microseconds,
+)
+
 logger = init_logger(__name__)
 
 
@@ -114,6 +120,9 @@ class OpenAIServingChat(OpenAIServing):
         self.chat_template_content_format: Final = chat_template_content_format
         self.trust_request_chat_template = trust_request_chat_template
         self.enable_log_outputs = enable_log_outputs
+        self._metrics_logger: Optional[PostgresMetricsLogger] = (
+            get_inference_metrics_logger()
+        )
 
         # set up tool use
         self.enable_auto_tools: bool = enable_auto_tools
@@ -191,6 +200,7 @@ class OpenAIServingChat(OpenAIServing):
         self,
         request: ChatCompletionRequest,
         raw_request: Optional[Request] = None,
+        client_side_id: Optional[str] = None,
     ) -> Union[AsyncGenerator[str, None], ChatCompletionResponse, ErrorResponse]:
         """
         Chat Completion API similar to OpenAI's API.
@@ -311,6 +321,12 @@ class OpenAIServingChat(OpenAIServing):
                     input_length=len(engine_prompt["prompt_token_ids"]),
                     default_sampling_params=self.default_sampling_params,
                 )
+                logger.info(
+                    "[%s] Input tokens length of request %s: %d",
+                    client_side_id or "no-client-side-id",
+                    request_id,
+                    len(engine_prompt["prompt_token_ids"]),
+                )
 
                 sampling_params: Union[SamplingParams, BeamSearchParams]
                 if request.use_beam_search:
@@ -384,6 +400,7 @@ class OpenAIServingChat(OpenAIServing):
                 tokenizer,
                 request_metadata,
                 enable_force_include_usage=self.enable_force_include_usage,
+                client_side_id=client_side_id,
             )
 
         try:
@@ -550,10 +567,14 @@ class OpenAIServingChat(OpenAIServing):
         tokenizer: AnyTokenizer,
         request_metadata: RequestResponseMetadata,
         enable_force_include_usage: bool,
+        client_side_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         created_time = int(time.time())
         chunk_object_type: Final = "chat.completion.chunk"
         first_iteration = True
+        start_generation_at_us: Optional[int] = None
+        respond_first_token_at_us: Optional[int] = None
+        respond_last_token_at_us: Optional[int] = None
 
         # Send response for each token for each request.n (index)
         num_choices = 1 if request.n is None else request.n
@@ -636,6 +657,10 @@ class OpenAIServingChat(OpenAIServing):
             include_usage, include_continuous_usage = False, False
 
         try:
+            start_time = time.time()
+            # print(f"[{client_side_id}] Start Generation: {start_time}")
+            if client_side_id:
+                start_generation_at_us = to_microseconds(start_time)
             async for res in result_generator:
                 if res.prompt_token_ids is not None:
                     num_prompt_tokens = len(res.prompt_token_ids)
@@ -646,6 +671,10 @@ class OpenAIServingChat(OpenAIServing):
                 # the result_generator, it needs to be sent as the FIRST
                 # response (by the try...catch).
                 if first_iteration:
+                    first_token_time = time.time()
+                    # print(f"[{client_side_id}] Respond First Token: {first_token_time}")
+                    if client_side_id:
+                        respond_first_token_at_us = to_microseconds(first_token_time)
                     num_cached_tokens = res.num_cached_tokens
                     # Send first response for each request.n (index) with
                     # the role
@@ -1221,10 +1250,31 @@ class OpenAIServingChat(OpenAIServing):
                     data = chunk.model_dump_json(exclude_unset=True)
                     yield f"data: {data}\n\n"
 
+            last_token_time = time.time()
+            # print(f"[{client_side_id}] Respond Last Token: {last_token_time}")
+            num_completion_tokens = sum(previous_num_tokens)
+            if client_side_id:
+                respond_last_token_at_us = to_microseconds(last_token_time)
+                if (
+                    start_generation_at_us is not None
+                    and respond_first_token_at_us is not None
+                    and respond_last_token_at_us is not None
+                ):
+                    aggregated_query_hits = num_cached_tokens or 0
+                    await self._log_inference_instance(
+                        client_side_id,
+                        start_generation_at_us,
+                        respond_first_token_at_us,
+                        respond_last_token_at_us,
+                        aggregated_query_hits,
+                        n_generated_tokens=num_completion_tokens,
+                        num_prompt_tokens=num_prompt_tokens,
+                    )
+            # print(f"Time generation ended: {time.time()}, duration: {time.time() - start_time}")
             # once the final token is handled, if stream_options.include_usage
             # is sent, send the usage
             if include_usage:
-                completion_tokens = sum(previous_num_tokens)
+                completion_tokens = num_completion_tokens
                 final_usage = UsageInfo(
                     prompt_tokens=num_prompt_tokens,
                     completion_tokens=completion_tokens,
@@ -1247,13 +1297,12 @@ class OpenAIServingChat(OpenAIServing):
                     exclude_unset=True, exclude_none=True
                 )
                 yield f"data: {final_usage_data}\n\n"
-
             # report to FastAPI middleware aggregate usage across all choices
-            num_completion_tokens = sum(previous_num_tokens)
+            completion_token_sum = num_completion_tokens
             request_metadata.final_usage_info = UsageInfo(
                 prompt_tokens=num_prompt_tokens,
-                completion_tokens=num_completion_tokens,
-                total_tokens=num_prompt_tokens + num_completion_tokens,
+                completion_tokens=completion_token_sum,
+                total_tokens=num_prompt_tokens + completion_token_sum,
             )
 
             # Log complete streaming response if output logging is enabled
@@ -1281,6 +1330,43 @@ class OpenAIServingChat(OpenAIServing):
             yield f"data: {data}\n\n"
         # Send the final done message after all response.n are finished
         yield "data: [DONE]\n\n"
+
+    async def _log_inference_instance(
+        self,
+        request_id: str,
+        start_generation_at_us: int,
+        respond_first_token_at_us: int,
+        respond_last_token_at_us: int,
+        prefix_hits: int,
+        n_generated_tokens: int,
+        num_prompt_tokens: int,
+    ) -> None:
+        if self._metrics_logger is None:
+            return
+
+        try:
+            await self._metrics_logger.log_async(
+                request_id,
+                start_generation_at_us,
+                respond_first_token_at_us,
+                respond_last_token_at_us,
+                prefix_hits,
+                n_generated_tokens,
+                num_prompt_tokens,
+            )
+        except Exception:
+            logger.exception("Error logging inference metrics to PostgreSQL")
+
+    def close(self) -> None:
+        if self._metrics_logger is not None:
+            self._metrics_logger.close()
+            self._metrics_logger = None
+
+    def __del__(self) -> None:  # pragma: no cover - best-effort cleanup
+        try:
+            self.close()
+        except Exception:
+            logger.exception("Error closing OpenAIServingChat metrics logger")
 
     async def chat_completion_full_generator(
         self,
