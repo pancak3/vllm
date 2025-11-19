@@ -1,0 +1,30 @@
+FROM vllm/vllm-openai:v0.11.0 AS builder
+
+ARG VLLM_PKG_VERSION=0.0.0.dev0
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${VLLM_PKG_VERSION}
+ENV SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VLLM=${VLLM_PKG_VERSION}
+
+WORKDIR /tmp/vllm-build
+
+# Pre-fetch runtime dependencies for offline installation and layer reuse.
+COPY requirements/common.txt /tmp/requirements/common.txt
+RUN python3 -m pip download --no-cache-dir -r /tmp/requirements/common.txt -d /tmp/wheels
+
+# Copy the full source tree (filtered by .dockerignore) and build a wheel.
+COPY . /tmp/vllm-build
+RUN VLLM_USE_PRECOMPILED=1 \
+	python3 -m pip wheel --no-deps --no-build-isolation --wheel-dir /tmp/wheels .
+
+FROM vllm/vllm-openai:v0.11.0
+
+WORKDIR /vllm-workspace
+
+COPY requirements/common.txt /tmp/requirements/common.txt
+COPY --from=builder /tmp/wheels /tmp/wheels
+
+RUN set -eux; \
+	VLLM_USE_PRECOMPILED=1 python3 -m pip install --no-cache-dir --force-reinstall --no-deps --no-index --find-links=/tmp/wheels vllm; \
+	python3 -m pip install --no-cache-dir --no-index --find-links=/tmp/wheels -r /tmp/requirements/common.txt; \
+	rm -rf /tmp/wheels /tmp/requirements
+
+ENTRYPOINT ["vllm", "serve"]

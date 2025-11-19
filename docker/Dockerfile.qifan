@@ -1,30 +1,17 @@
-FROM vllm/vllm-openai:v0.11.0 AS builder
+FROM harbor.qifand.com/llm-infer/vllm-openai-base:latest AS builder
 
-ARG VLLM_PKG_VERSION=0.0.0.dev0
-ENV SETUPTOOLS_SCM_PRETEND_VERSION=${VLLM_PKG_VERSION}
-ENV SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VLLM=${VLLM_PKG_VERSION}
+RUN apt update && apt install -y unzip
+RUN wget https://github.com/pancak3/LMCache/archive/refs/heads/dev.zip
+RUN unzip dev.zip && cd LMCache-dev && cp -r lmcache/* /usr/local/lib/python3.12/dist-packages/lmcache/
 
-WORKDIR /tmp/vllm-build
+COPY vllm.tar /tmp/vllm.tar
+RUN mkdir -p /tmp/project && cd /tmp/project && tar -xf /tmp/vllm.tar && \
+	cp -r /tmp/project/vllm/entrypoints/* /usr/local/lib/python3.12/dist-packages/vllm/entrypoints/
 
-# Pre-fetch runtime dependencies for offline installation and layer reuse.
-COPY requirements/common.txt /tmp/requirements/common.txt
-RUN python3 -m pip download --no-cache-dir -r /tmp/requirements/common.txt -d /tmp/wheels
 
-# Copy the full source tree (filtered by .dockerignore) and build a wheel.
-COPY . /tmp/vllm-build
-RUN VLLM_USE_PRECOMPILED=1 \
-	python3 -m pip wheel --no-deps --no-build-isolation --wheel-dir /tmp/wheels .
+FROM harbor.qifand.com/llm-infer/vllm-openai-base:latest
 
-FROM vllm/vllm-openai:v0.11.0
+COPY --from=builder /usr/local/lib/python3.12/dist-packages/ /usr/local/lib/python3.12/dist-packages/
 
-WORKDIR /vllm-workspace
-
-COPY requirements/common.txt /tmp/requirements/common.txt
-COPY --from=builder /tmp/wheels /tmp/wheels
-
-RUN set -eux; \
-	VLLM_USE_PRECOMPILED=1 python3 -m pip install --no-cache-dir --force-reinstall --no-deps --no-index --find-links=/tmp/wheels vllm; \
-	python3 -m pip install --no-cache-dir --no-index --find-links=/tmp/wheels -r /tmp/requirements/common.txt; \
-	rm -rf /tmp/wheels /tmp/requirements
-
-ENTRYPOINT ["vllm", "serve"]
+COPY ./docker/run.sh /usr/local/bin/run.sh
+ENTRYPOINT ["/usr/local/bin/run.sh"]
