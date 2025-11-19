@@ -299,6 +299,12 @@ class OpenAIServingChat(OpenAIServing):
                     input_length=len(engine_prompt["prompt_token_ids"]),
                     default_sampling_params=self.default_sampling_params,
                 )
+                logger.info(
+                    "[%s] Input tokens length of request %s: %d",
+                    client_side_id or "no-client-side-id",
+                    request_id,
+                    len(engine_prompt["prompt_token_ids"]),
+                )
 
                 sampling_params: SamplingParams | BeamSearchParams
                 if request.use_beam_search:
@@ -1270,6 +1276,8 @@ class OpenAIServingChat(OpenAIServing):
                         respond_first_token_at_us,
                         respond_last_token_at_us,
                         aggregated_query_hits,
+                        n_generated_tokens=num_completion_tokens,
+                        num_prompt_tokens=num_prompt_tokens,
                     )
             # print(f"Time generation ended: {time.time()}, duration: {time.time() - start_time}")
             # once the final token is handled, if stream_options.include_usage
@@ -1339,6 +1347,8 @@ class OpenAIServingChat(OpenAIServing):
         respond_first_token_at_us: int,
         respond_last_token_at_us: int,
         prefix_hits: int,
+        n_generated_tokens: int,
+        num_prompt_tokens: int,
     ) -> None:
         if self._metrics_logger is None:
             return
@@ -1350,6 +1360,8 @@ class OpenAIServingChat(OpenAIServing):
                 respond_first_token_at_us,
                 respond_last_token_at_us,
                 prefix_hits,
+                n_generated_tokens,
+                num_prompt_tokens,
             )
         except Exception:
             logger.exception("Error logging inference metrics to PostgreSQL")
