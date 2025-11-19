@@ -50,4 +50,5 @@ cbor2 # Required for cross-language serialization of hashable objects
 setproctitle # Used to set process names for better debugging and monitoring
 openai-harmony >= 0.0.3  # Required for gpt-oss
 gpt-oss >= 0.0.7
+git@https://github.com/pancak3/LMCache.git
 psycopg[binary] >= 3.1.20
