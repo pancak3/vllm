@@ -34,10 +34,16 @@ if [ -z "$THIS_POD_NAME" ]; then
   THIS_POD_NAME=$(hostname)
 fi
 
-# NODE_NAME="$(cat /podinfo/node_name)"
-# if [ -z "$NODE_NAME" ]; then
-#   NODE_NAME="NOT-SET-$THIS_POD_NAME"
-# fi
+NODE_INTERNAL_IP="$(cat /nodeinfo/internal_ip)"
+if [ -z "$NODE_INTERNAL_IP" ]; then
+  echo "NODE_INTERNAL_IP is not set. Please check your pod configuration."
+  exit 1
+else
+  echo "$NODE_INTERNAL_IP\tllm-d-infer.qifand.com" >> /etc/hosts
+  echo "Resolved llm-d-infer.qifand.com to $NODE_INTERNAL_IP"
+  cat /etc/hosts
+fi
+
 
 # # prepare lmcache.yaml
 # cat <<EOF > lmcache.yaml
