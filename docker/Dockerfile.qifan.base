@@ -8,7 +8,9 @@ WORKDIR /tmp/vllm-build
 
 # Pre-fetch runtime dependencies for offline installation and layer reuse.
 COPY requirements/common.txt /tmp/requirements/common.txt
-RUN python3 -m pip download --no-cache-dir -r /tmp/requirements/common.txt -d /tmp/wheels
+RUN set -eux; \
+	python3 -m pip download --no-cache-dir -r /tmp/requirements/common.txt -d /tmp/wheels; \
+	python3 -m pip download --no-cache-dir torch==2.9.0 wheel -d /tmp/wheels
 
 # Copy the full source tree (filtered by .dockerignore) and build a wheel.
 COPY . /tmp/vllm-build

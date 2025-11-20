@@ -29,10 +29,14 @@ if [ -z "$DATACENTER_LABEL" ]; then
   exit 1
 fi
 
-
 THIS_POD_NAME=$POD_IP
 if [ -z "$THIS_POD_NAME" ]; then
   THIS_POD_NAME=$(hostname)
+fi
+
+NODE_NAME="$(cat /podinfo/node_name)"
+if [ -z "$NODE_NAME" ]; then
+  NODE_NAME="NOT-SET-$THIS_POD_NAME"
 fi
 
 # # prepare lmcache.yaml
