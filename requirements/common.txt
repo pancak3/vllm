@@ -51,5 +51,5 @@ openai-harmony >= 0.0.3  # Required for gpt-oss
 anthropic == 0.71.0
 model-hosting-container-standards < 1.0.0
 gpt-oss >= 0.0.7
-git@https://github.com/pancak3/LMCache.git
+lmcache @git+https://github.com/pancak3/LMCache.git@dev
 psycopg[binary] >= 3.1.20
