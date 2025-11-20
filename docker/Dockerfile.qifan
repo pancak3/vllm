@@ -2,7 +2,7 @@ FROM harbor.qifand.com/llm-infer/vllm-openai-base:latest AS builder
 
 COPY vllm.tar /tmp/vllm.tar
 RUN mkdir -p /tmp/project && cd /tmp/project && tar -xf /tmp/vllm.tar && \
-	cp -r /tmp/project/vllm/entrypoints/* /usr/local/lib/python3.12/dist-packages/vllm/entrypoints/
+	cp -a /tmp/project/vllm/. /usr/local/lib/python3.12/dist-packages/vllm/
 
 
 FROM harbor.qifand.com/llm-infer/vllm-openai-base:latest

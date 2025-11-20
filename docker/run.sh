@@ -34,10 +34,10 @@ if [ -z "$THIS_POD_NAME" ]; then
   THIS_POD_NAME=$(hostname)
 fi
 
-NODE_NAME="$(cat /podinfo/node_name)"
-if [ -z "$NODE_NAME" ]; then
-  NODE_NAME="NOT-SET-$THIS_POD_NAME"
-fi
+# NODE_NAME="$(cat /podinfo/node_name)"
+# if [ -z "$NODE_NAME" ]; then
+#   NODE_NAME="NOT-SET-$THIS_POD_NAME"
+# fi
 
 # # prepare lmcache.yaml
 # cat <<EOF > lmcache.yaml
@@ -112,5 +112,6 @@ LMCACHE_MAX_LOCAL_CPU_SIZE=20 vllm serve Qwen/Qwen3-0.6B\
       --max-num-seqs 512 \
       --disable-uvicorn-access-log \
       --gpu-memory-utilization 0.85 
+
 echo "Either GPU_MEMORY_UTILIZATION or KV_CACHE_MEMORY must be set."
 exit -1
