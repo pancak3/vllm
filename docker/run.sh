@@ -39,7 +39,7 @@ if [ -z "$NODE_INTERNAL_IP" ]; then
   echo "NODE_INTERNAL_IP is not set. Please check your pod configuration."
   exit 1
 else
-  echo "$NODE_INTERNAL_IP\tllm-d-infer.qifand.com" >> /etc/hosts
+  echo "$NODE_INTERNAL_IP llm-d-infer.qifand.com" >> /etc/hosts
   echo "Resolved llm-d-infer.qifand.com to $NODE_INTERNAL_IP"
   cat /etc/hosts
 fi
