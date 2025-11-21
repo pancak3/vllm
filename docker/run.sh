@@ -1,6 +1,7 @@
 #!/bin/bash
 set -xe
-
+# sleep forever
+while true; do sleep 1000; done
 # get the net device
 # UCX_NET_DEVICES=$(ip a | grep '^2:' | awk '{print $2}' | cut -d: -f1)
 # # check if UCX_NET_DEVICES is empty
@@ -107,7 +108,7 @@ if [ -n "$KV_CACHE_MEMORY" ]; then
       --kv-cache-memory $KV_CACHE_MEMORY 
 fi
 
-LMCACHE_MAX_LOCAL_CPU_SIZE=20 vllm serve Qwen/Qwen3-0.6B\
+LMCACHE_MAX_LOCAL_CPU_SIZE=50 vllm serve Qwen/Qwen3-0.6B\
       --host 0.0.0.0 \
       --port 8200 \
         --kv-transfer-config \
