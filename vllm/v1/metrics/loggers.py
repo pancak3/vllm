@@ -3,6 +3,7 @@
 
 import logging
 import time
+import subprocess
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import TypeAlias
@@ -425,6 +426,42 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
             labelnames=labelnames + ["sleep_state"],
             multiprocess_mode="mostrecent",
         )
+        #
+        # GPU utilization
+        #
+        gauge_gpu_utilization = self._gauge_cls(
+            name="vllm:gpu_utilization_perc",
+            documentation="GPU utilization percentage. 1 means 100 percent usage.",
+            multiprocess_mode="mostrecent",
+            labelnames=labelnames,
+        )
+        self.gauge_gpu_utilization = make_per_engine(
+            gauge_gpu_utilization, engine_indexes, model_name
+        )
+        # Initialize to 0
+        for engine_idx in engine_indexes:
+            self.gauge_gpu_utilization[engine_idx].set(0)
+        self.gpu_util_error_logged = False
+
+        #
+        # GPU cache
+        #
+        # Deprecated in 0.9.2 - Renamed as vllm:kv_cache_usage_perc
+        # With 0.11.x you can enable with --show-hidden-metrics-for-version=0.10
+        # TODO: remove in 0.12.0
+        if self.show_hidden_metrics:
+            gauge_gpu_cache_usage = self._gauge_cls(
+                name="vllm:gpu_cache_usage_perc",
+                documentation=(
+                    "GPU KV-cache usage. 1 means 100 percent usage."
+                    "DEPRECATED: Use vllm:kv_cache_usage_perc instead."
+                ),
+                multiprocess_mode="mostrecent",
+                labelnames=labelnames,
+            )
+            self.gauge_gpu_cache_usage = make_per_engine(
+                gauge_gpu_cache_usage, engine_indexes, model_name
+            )
 
         self.gauge_engine_sleep_state = {}
         sleep_state = ["awake", "weights_offloaded", "discard_all"]
@@ -917,6 +954,16 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
             self.gauge_scheduler_waiting[engine_idx].set(
                 scheduler_stats.num_waiting_reqs
             )
+
+            # Update GPU utilization
+            gpu_util = self._get_gpu_utilization()
+            if gpu_util is not None:
+                self.gauge_gpu_utilization[engine_idx].set(gpu_util / 100.0)
+
+            if self.show_hidden_metrics:
+                self.gauge_gpu_cache_usage[engine_idx].set(
+                    scheduler_stats.kv_cache_usage
+                )
             self.gauge_kv_cache_usage[engine_idx].set(scheduler_stats.kv_cache_usage)
 
             self.counter_prefix_cache_queries[engine_idx].inc(
@@ -1046,6 +1093,28 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
 
     def log_engine_initialized(self):
         self.log_metrics_info("cache_config", self.vllm_config.cache_config)
+
+    def _get_gpu_utilization(self) -> Optional[float]:
+        """Fetch GPU utilization percentage using nvidia-smi."""
+        try:
+            # Run nvidia-smi to get utilization for GPU 0 (adjust index for multi-GPU)
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits", "--id=0"],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                util_str = result.stdout.strip()
+                return float(util_str) if util_str.isdigit() else None
+            else:
+                if not self.gpu_util_error_logged:
+                    logger.warning("nvidia-smi failed: %s", result.stderr)
+                    self.gpu_util_error_logged = True
+                return None
+        except (subprocess.TimeoutExpired, ValueError, FileNotFoundError) as e:
+            if not self.gpu_util_error_logged:
+                logger.warning("Failed to get GPU utilization: %s", e)
+                self.gpu_util_error_logged = True
+            return None
 
 
 PromMetric: TypeAlias = Gauge | Counter | Histogram
