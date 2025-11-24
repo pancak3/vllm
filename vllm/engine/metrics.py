@@ -547,6 +547,9 @@ class PrometheusStatLogger(StatLoggerBase):
         self.metrics = self._metrics_cls(
             labelnames=list(labels.keys()), vllm_config=vllm_config
         )
+        # Initialize GPU utilization to 0 so it shows up even if nvidia-smi fails
+        self.metrics.gauge_gpu_utilization.labels(**self.labels).set(0)
+        self.gpu_util_error_logged = False
 
     def _log_gauge(self, gauge, data: Union[int, float]) -> None:
         # Convenience function for logging to gauge.
@@ -673,10 +676,14 @@ class PrometheusStatLogger(StatLoggerBase):
                 util_str = result.stdout.strip()
                 return float(util_str) if util_str.isdigit() else None
             else:
-                logger.warning("nvidia-smi failed: %s", result.stderr)
+                if not self.gpu_util_error_logged:
+                    logger.warning("nvidia-smi failed: %s", result.stderr)
+                    self.gpu_util_error_logged = True
                 return None
         except (subprocess.TimeoutExpired, ValueError, FileNotFoundError) as e:
-            logger.warning("Failed to get GPU utilization: %s", e)
+            if not self.gpu_util_error_logged:
+                logger.warning("Failed to get GPU utilization: %s", e)
+                self.gpu_util_error_logged = True
             return None
 
     def log(self, stats: Stats):
