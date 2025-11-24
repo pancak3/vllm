@@ -1334,9 +1334,8 @@ class OpenAIServingChat(OpenAIServing):
 
         except Exception as e:
             # TODO: Use a vllm-specific Validation Error
-            logger.exception("Error in chat completion stream generator.")
-            data = self.create_streaming_error_response(str(e))
-            yield f"data: {data}\n\n"
+            logger.error("Error in chat completion stream generator: %s", e)
+            return
         # Send the final done message after all response.n are finished
         yield "data: [DONE]\n\n"
 
