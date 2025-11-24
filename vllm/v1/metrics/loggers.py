@@ -438,10 +438,11 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
         self.gauge_gpu_utilization = make_per_engine(
             gauge_gpu_utilization, engine_indexes, model_name
         )
-        # Initialize to 0
+        # Initialize to 0.1
         for engine_idx in engine_indexes:
-            self.gauge_gpu_utilization[engine_idx].set(0)
+            self.gauge_gpu_utilization[engine_idx].set(0.1 / 100.0)
         self.gpu_util_error_logged = False
+        self.gpu_util_history = []
 
         #
         # GPU cache
@@ -1094,17 +1095,61 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
     def log_engine_initialized(self):
         self.log_metrics_info("cache_config", self.vllm_config.cache_config)
 
+    def _estimate_next_gpu_util(self) -> float:
+        if not self.gpu_util_history:
+            return 0.1
+
+        n = len(self.gpu_util_history)
+        if n < 2:
+            return self.gpu_util_history[-1]
+
+        # Linear regression to predict the next value
+        # x values are 0, 1, ..., n-1
+        # y values are self.gpu_util_history
+
+        sum_x = n * (n - 1) / 2
+        sum_y = sum(self.gpu_util_history)
+        sum_xy = sum(i * y for i, y in enumerate(self.gpu_util_history))
+        sum_x2 = n * (n - 1) * (2 * n - 1) / 6
+
+        denominator = n * sum_x2 - sum_x**2
+        if denominator == 0:
+            return self.gpu_util_history[-1]
+
+        slope = (n * sum_xy - sum_x * sum_y) / denominator
+        intercept = (sum_y - slope * sum_x) / n
+
+        # Predict for x = n
+        next_val = slope * n + intercept
+
+        return max(0.1, min(100.0, next_val))
+
     def _get_gpu_utilization(self) -> Optional[float]:
         """Fetch GPU utilization percentage using nvidia-smi."""
         try:
             # Run nvidia-smi to get utilization for GPU 0 (adjust index for multi-GPU)
             result = subprocess.run(
-                ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits", "--id=0"],
-                capture_output=True, text=True, timeout=5
+                [
+                    "nvidia-smi",
+                    "--query-gpu=utilization.gpu",
+                    "--format=csv,noheader,nounits",
+                    "--id=0",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=0.1,
             )
             if result.returncode == 0:
                 util_str = result.stdout.strip()
-                return float(util_str) if util_str.isdigit() else None
+                if util_str.isdigit():
+                    val = float(util_str)
+                    if val == 0:
+                        val = 0.1
+                    self.gpu_util_history.append(val)
+                    if len(self.gpu_util_history) > 20:
+                        self.gpu_util_history.pop(0)
+                    return self._estimate_next_gpu_util()
+                return None
             else:
                 if not self.gpu_util_error_logged:
                     logger.warning("nvidia-smi failed: %s", result.stderr)
