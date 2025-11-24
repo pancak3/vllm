@@ -92,7 +92,7 @@ class Metrics:
             name="vllm:gpu_utilization_perc",
             documentation="GPU utilization percentage. 1 means 100 percent usage.",
             labelnames=labelnames,
-            multiprocess_mode="sum",
+            multiprocess_mode="mostrecent",
         )
 
         # Iteration stats
@@ -548,6 +548,7 @@ class PrometheusStatLogger(StatLoggerBase):
             labelnames=list(labels.keys()), vllm_config=vllm_config
         )
         # Initialize GPU utilization to 0 so it shows up even if nvidia-smi fails
+        logger.info("Initializing GPU utilization metric")
         self.metrics.gauge_gpu_utilization.labels(**self.labels).set(0)
         self.gpu_util_error_logged = False
 
