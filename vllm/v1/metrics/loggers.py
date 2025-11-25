@@ -435,23 +435,52 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
         #
         # GPU utilization
         #
-        self.gauge_gpu_utilization = self._gauge_cls(
-            name="vllm:gpu_utilization",
-            documentation="GPU utilization info.",
+        gauge_gpu_utilization = self._gauge_cls(
+            name="vllm:gpu_utilization_perc",
+            documentation="GPU utilization percentage. 1 means 100 percent usage.",
             multiprocess_mode="mostrecent",
-            labelnames=labelnames + ["util_perc", "estimated_perc", "mem_util_perc", "estimated_mem_util_perc"],
+            labelnames=labelnames,
         )
-        self.last_gpu_util_labels = {}
-        
-        # Initialize to 0 with default label values
+        self.gauge_gpu_utilization = make_per_engine(
+            gauge_gpu_utilization, engine_indexes, model_name
+        )
+
+        gauge_gpu_memory_utilization = self._gauge_cls(
+            name="vllm:gpu_memory_utilization_perc",
+            documentation="GPU memory utilization percentage. 1 means 100 percent usage.",
+            multiprocess_mode="mostrecent",
+            labelnames=labelnames,
+        )
+        self.gauge_gpu_memory_utilization = make_per_engine(
+            gauge_gpu_memory_utilization, engine_indexes, model_name
+        )
+
+        gauge_estimated_gpu_utilization = self._gauge_cls(
+            name="vllm:estimated_gpu_utilization_perc",
+            documentation="Estimated GPU utilization percentage based on recent history.",
+            multiprocess_mode="mostrecent",
+            labelnames=labelnames,
+        )
+        self.gauge_estimated_gpu_utilization = make_per_engine(
+            gauge_estimated_gpu_utilization, engine_indexes, model_name
+        )
+
+        gauge_estimated_gpu_memory_utilization = self._gauge_cls(
+            name="vllm:estimated_gpu_memory_utilization_perc",
+            documentation="Estimated GPU memory utilization percentage based on recent history.",
+            multiprocess_mode="mostrecent",
+            labelnames=labelnames,
+        )
+        self.gauge_estimated_gpu_memory_utilization = make_per_engine(
+            gauge_estimated_gpu_memory_utilization, engine_indexes, model_name
+        )
+
+        # Initialize to 0
         for engine_idx in engine_indexes:
-            default_labels = ("0.00", "0.00", "0.00", "0.00")
-            self.gauge_gpu_utilization.labels(
-                model_name, 
-                str(engine_idx), 
-                *default_labels
-            ).set(0)
-            self.last_gpu_util_labels[engine_idx] = default_labels
+            self.gauge_gpu_utilization[engine_idx].set(0)
+            self.gauge_gpu_memory_utilization[engine_idx].set(0)
+            self.gauge_estimated_gpu_utilization[engine_idx].set(0)
+            self.gauge_estimated_gpu_memory_utilization[engine_idx].set(0)
 
         self.gpu_util_error_logged = False
 
@@ -1041,33 +1070,20 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
 
             # Update GPU utilization
             gpu_util = self._get_gpu_utilization()
-            
-            # Format values for labels
-            util_str = f"{gpu_util/100.0:.2f}" if gpu_util is not None else "0.00"
-            est_str = f"{self.estimated_gpu_utilization/100.0:.2f}"
-            mem_str = f"{float(self.gpu_memory_utilization)/100.0:.2f}"
-            est_mem_str = f"{self.estimated_gpu_memory_utilization/100.0:.2f}"
-            
-            # Remove old metric if labels changed
-            if engine_idx in self.last_gpu_util_labels:
-                old_labels = self.last_gpu_util_labels[engine_idx]
-                if old_labels != (util_str, est_str, mem_str, est_mem_str):
-                    try:
-                        self.gauge_gpu_utilization.remove(self.vllm_config.model_config.served_model_name, str(engine_idx), *old_labels)
-                    except KeyError:
-                        pass
-            
-            # Set new metric
-            self.gauge_gpu_utilization.labels(
-                self.vllm_config.model_config.served_model_name, 
-                str(engine_idx), 
-                util_str, 
-                est_str, 
-                mem_str, 
-                est_mem_str
-            ).set(0)
-            
-            self.last_gpu_util_labels[engine_idx] = (util_str, est_str, mem_str, est_mem_str)
+            if gpu_util is not None:
+                self.gauge_gpu_utilization[engine_idx].set(gpu_util / 100.0)
+
+            # Update GPU Memory utilization
+            if self.gpu_memory_utilization is not None:
+                self.gauge_gpu_memory_utilization[engine_idx].set(self.gpu_memory_utilization / 100.0)
+
+            # Update Estimated GPU utilization
+            if self.estimated_gpu_utilization is not None:
+                self.gauge_estimated_gpu_utilization[engine_idx].set(self.estimated_gpu_utilization / 100.0)
+
+            # Update Estimated GPU Memory utilization
+            if self.estimated_gpu_memory_utilization is not None:
+                self.gauge_estimated_gpu_memory_utilization[engine_idx].set(self.estimated_gpu_memory_utilization / 100.0)
 
             if self.show_hidden_metrics:
                 self.gauge_gpu_cache_usage[engine_idx].set(
