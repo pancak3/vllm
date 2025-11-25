@@ -7,6 +7,10 @@ import subprocess
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import TypeAlias
+from typing import Callable, Optional, Union
+from collections import deque
+import threading
+import numpy as np
 
 from prometheus_client import Counter, Gauge, Histogram
 
@@ -18,6 +22,8 @@ from vllm.distributed.kv_transfer.kv_connector.v1.metrics import (
 )
 from vllm.logger import init_logger
 from vllm.plugins import STAT_LOGGER_PLUGINS_GROUP, load_plugins_by_group
+from vllm.utils import import_pynvml
+from vllm.v1.core.kv_cache_utils import PrefixCachingMetrics
 from vllm.v1.engine import FinishReason
 from vllm.v1.metrics.prometheus import unregister_vllm_metrics
 from vllm.v1.metrics.stats import (
@@ -429,18 +435,14 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
         #
         # GPU utilization
         #
-        gauge_gpu_utilization = self._gauge_cls(
-            name="vllm:gpu_utilization_perc",
-            documentation="GPU utilization percentage. 1 means 100 percent usage.",
+        self.gauge_gpu_utilization = self._gauge_cls(
+            name="vllm:gpu_utilization",
+            documentation="GPU utilization info.",
             multiprocess_mode="mostrecent",
-            labelnames=labelnames,
+            labelnames=labelnames + ["util_perc", "estimated_perc", "mem_util_perc", "estimated_mem_util_perc"],
         )
-        self.gauge_gpu_utilization = make_per_engine(
-            gauge_gpu_utilization, engine_indexes, model_name
-        )
-        # Initialize to 0
-        for engine_idx in engine_indexes:
-            self.gauge_gpu_utilization[engine_idx].set(0)
+        self.last_gpu_util_labels = {}
+
         self.gpu_util_error_logged = False
 
         #
@@ -915,6 +917,78 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
                 ],
             )
 
+        # GPU Memory utilization
+        # Removed as per request to consolidate into one metric
+        
+        # Estimated GPU utilization
+        # Removed as per request to consolidate into one metric
+
+        # Initialize metrics
+        # for engine_idx in engine_indexes:
+        #     self.gauge_gpu_memory_utilization[engine_idx].set(0)
+        #     self.gauge_estimated_gpu_utilization[engine_idx].set(0)
+
+        # Initialize background collection
+        self.gpu_utilization = 0.0
+        self.gpu_memory_utilization = 0.0
+        self.estimated_gpu_utilization = 0.0
+        self.estimated_gpu_memory_utilization = 0.0
+        self.gpu_util_history = deque(maxlen=10)
+        self.gpu_mem_history = deque(maxlen=10)
+        self._init_gpu_metrics_collection()
+
+    def _init_gpu_metrics_collection(self):
+        try:
+            self.pynvml = import_pynvml()
+            self.pynvml.nvmlInit()
+            # Track GPU 0 by default as per original code
+            self.gpu_handle = self.pynvml.nvmlDeviceGetHandleByIndex(0)
+            
+            self.collection_thread = threading.Thread(
+                target=self._collect_gpu_metrics_loop, 
+                daemon=True
+            )
+            self.collection_thread.start()
+        except Exception as e:
+            logger.warning(f"Failed to initialize pynvml for GPU metrics: {e}")
+
+    def _collect_gpu_metrics_loop(self):
+        while True:
+            try:
+                util = self.pynvml.nvmlDeviceGetUtilizationRates(self.gpu_handle)
+                self.gpu_utilization = util.gpu
+                self.gpu_memory_utilization = util.memory
+                
+                # Update history for estimation
+                now = time.time()
+                self.gpu_util_history.append((now, util.gpu))
+                self.gpu_mem_history.append((now, util.memory))
+                
+                # Simple linear regression for estimation
+                for history, attr_name in [
+                    (self.gpu_util_history, 'estimated_gpu_utilization'),
+                    (self.gpu_mem_history, 'estimated_gpu_memory_utilization')
+                ]:
+                    if len(history) >= 2:
+                        x = np.array([t for t, _ in history])
+                        y = np.array([u for _, u in history])
+                        # Normalize time to avoid large numbers
+                        x = x - x[0]
+                        A = np.vstack([x, np.ones(len(x))]).T
+                        m, c = np.linalg.lstsq(A, y, rcond=None)[0]
+                        # Predict next second
+                        next_time = x[-1] + 1.0
+                        est = max(0.0, min(100.0, m * next_time + c))
+                        setattr(self, attr_name, est)
+                    else:
+                        # Fallback to current value if not enough history
+                        current_val = history[-1][1] if history else 0.0
+                        setattr(self, attr_name, float(current_val))
+                    
+            except Exception:
+                pass
+            time.sleep(1)
+
     def log_metrics_info(self, type: str, config_obj: SupportsMetricsInfo):
         metrics_info = config_obj.metrics_info()
         metrics_info["engine"] = ""
@@ -957,8 +1031,33 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
 
             # Update GPU utilization
             gpu_util = self._get_gpu_utilization()
-            if gpu_util is not None:
-                self.gauge_gpu_utilization[engine_idx].set(gpu_util / 100.0)
+            
+            # Format values for labels
+            util_str = f"{gpu_util/100.0:.2f}" if gpu_util is not None else "0.00"
+            est_str = f"{self.estimated_gpu_utilization/100.0:.2f}"
+            mem_str = f"{float(self.gpu_memory_utilization)/100.0:.2f}"
+            est_mem_str = f"{self.estimated_gpu_memory_utilization/100.0:.2f}"
+            
+            # Remove old metric if labels changed
+            if engine_idx in self.last_gpu_util_labels:
+                old_labels = self.last_gpu_util_labels[engine_idx]
+                if old_labels != (util_str, est_str, mem_str, est_mem_str):
+                    try:
+                        self.gauge_gpu_utilization.remove(self.vllm_config.model_config.served_model_name, str(engine_idx), *old_labels)
+                    except KeyError:
+                        pass
+            
+            # Set new metric
+            self.gauge_gpu_utilization.labels(
+                self.vllm_config.model_config.served_model_name, 
+                str(engine_idx), 
+                util_str, 
+                est_str, 
+                mem_str, 
+                est_mem_str
+            ).set(0)
+            
+            self.last_gpu_util_labels[engine_idx] = (util_str, est_str, mem_str, est_mem_str)
 
             if self.show_hidden_metrics:
                 self.gauge_gpu_cache_usage[engine_idx].set(
@@ -1095,26 +1194,7 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
         self.log_metrics_info("cache_config", self.vllm_config.cache_config)
 
     def _get_gpu_utilization(self) -> Optional[float]:
-        """Fetch GPU utilization percentage using nvidia-smi."""
-        try:
-            # Run nvidia-smi to get utilization for GPU 0 (adjust index for multi-GPU)
-            result = subprocess.run(
-                ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits", "--id=0"],
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                util_str = result.stdout.strip()
-                return float(util_str) if util_str.isdigit() else None
-            else:
-                if not self.gpu_util_error_logged:
-                    logger.warning("nvidia-smi failed: %s", result.stderr)
-                    self.gpu_util_error_logged = True
-                return None
-        except (subprocess.TimeoutExpired, ValueError, FileNotFoundError) as e:
-            if not self.gpu_util_error_logged:
-                logger.warning("Failed to get GPU utilization: %s", e)
-                self.gpu_util_error_logged = True
-            return None
+        return float(self.gpu_utilization)
 
 
 PromMetric: TypeAlias = Gauge | Counter | Histogram
