@@ -442,6 +442,16 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
             labelnames=labelnames + ["util_perc", "estimated_perc", "mem_util_perc", "estimated_mem_util_perc"],
         )
         self.last_gpu_util_labels = {}
+        
+        # Initialize to 0 with default label values
+        for engine_idx in engine_indexes:
+            default_labels = ("0.00", "0.00", "0.00", "0.00")
+            self.gauge_gpu_utilization.labels(
+                model_name, 
+                str(engine_idx), 
+                *default_labels
+            ).set(0)
+            self.last_gpu_util_labels[engine_idx] = default_labels
 
         self.gpu_util_error_logged = False
 
