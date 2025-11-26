@@ -490,19 +490,18 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
         # Deprecated in 0.9.2 - Renamed as vllm:kv_cache_usage_perc
         # With 0.11.x you can enable with --show-hidden-metrics-for-version=0.10
         # TODO: remove in 0.12.0
-        if self.show_hidden_metrics:
-            gauge_gpu_cache_usage = self._gauge_cls(
-                name="vllm:gpu_cache_usage_perc",
-                documentation=(
-                    "GPU KV-cache usage. 1 means 100 percent usage."
-                    "DEPRECATED: Use vllm:kv_cache_usage_perc instead."
-                ),
-                multiprocess_mode="mostrecent",
-                labelnames=labelnames,
-            )
-            self.gauge_gpu_cache_usage = make_per_engine(
-                gauge_gpu_cache_usage, engine_indexes, model_name
-            )
+        gauge_gpu_cache_usage = self._gauge_cls(
+            name="vllm:gpu_cache_usage_perc",
+            documentation=(
+                "GPU KV-cache usage. 1 means 100 percent usage."
+                "DEPRECATED: Use vllm:kv_cache_usage_perc instead."
+            ),
+            multiprocess_mode="mostrecent",
+            labelnames=labelnames,
+        )
+        self.gauge_gpu_cache_usage = make_per_engine(
+            gauge_gpu_cache_usage, engine_indexes, model_name
+        )
 
         self.gauge_engine_sleep_state = {}
         sleep_state = ["awake", "weights_offloaded", "discard_all"]
@@ -955,6 +954,23 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
                     self.labelname_running_lora_adapters,
                 ],
             )
+        self.gauge_lora_info: Optional[prometheus_client.Gauge] = None
+        
+        self.labelname_max_lora = "max_lora"
+        self.labelname_waiting_lora_adapters = "waiting_lora_adapters"
+        self.labelname_running_lora_adapters = "running_lora_adapters"
+        self.max_lora = vllm_config.lora_config.max_loras if vllm_config.lora_config else 0
+        
+        self.gauge_lora_info = self._gauge_cls(
+            name="vllm:lora_requests_info",
+            documentation="Running stats on lora requests.",
+            multiprocess_mode="sum",
+            labelnames=[
+                self.labelname_max_lora,
+                self.labelname_waiting_lora_adapters,
+                self.labelname_running_lora_adapters,
+            ],
+        )
 
         # GPU Memory utilization
         # Removed as per request to consolidate into one metric
@@ -1085,10 +1101,9 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
             if self.estimated_gpu_memory_utilization is not None:
                 self.gauge_estimated_gpu_memory_utilization[engine_idx].set(self.estimated_gpu_memory_utilization / 100.0)
 
-            if self.show_hidden_metrics:
-                self.gauge_gpu_cache_usage[engine_idx].set(
-                    scheduler_stats.kv_cache_usage
-                )
+            self.gauge_gpu_cache_usage[engine_idx].set(
+                scheduler_stats.kv_cache_usage
+            )
             self.gauge_kv_cache_usage[engine_idx].set(scheduler_stats.kv_cache_usage)
 
             self.counter_prefix_cache_queries[engine_idx].inc(
