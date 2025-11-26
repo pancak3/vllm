@@ -1138,7 +1138,7 @@ class OpenAIServing:
                 **_chat_template_kwargs,
             )
 
-        print(f"[*] Applied Chat Template Prompt:\n{request_prompt}")
+        print(f"[*] Applied Chat Template Prompt:\n{request_prompt!r}")
 
         mm_data = await mm_data_future
 
