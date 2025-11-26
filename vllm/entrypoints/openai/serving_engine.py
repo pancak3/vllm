@@ -1138,6 +1138,8 @@ class OpenAIServing:
                 **_chat_template_kwargs,
             )
 
+        print(f"[*] Applied Chat Template Prompt:\n{request_prompt}")
+
         mm_data = await mm_data_future
 
         # tool parsing is done only if a tool_parser has been set and if
