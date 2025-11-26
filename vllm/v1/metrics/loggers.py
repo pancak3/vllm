@@ -971,6 +971,16 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
                 self.labelname_running_lora_adapters,
             ],
         )
+        
+        # Initialize the metric with empty values
+        if self.gauge_lora_info:
+            self.gauge_lora_info.labels(
+                **{
+                    self.labelname_max_lora: str(self.max_lora),
+                    self.labelname_waiting_lora_adapters: "",
+                    self.labelname_running_lora_adapters: "",
+                }
+            ).set_to_current_time()
 
         # GPU Memory utilization
         # Removed as per request to consolidate into one metric
@@ -1091,15 +1101,15 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
 
             # Update GPU Memory utilization
             if self.gpu_memory_utilization is not None:
-                self.gauge_gpu_memory_utilization[engine_idx].set(self.gpu_memory_utilization / 100.0)
+                self.gauge_gpu_memory_utilization[engine_idx].set(float(self.gpu_memory_utilization) / 100.0)
 
             # Update Estimated GPU utilization
             if self.estimated_gpu_utilization is not None:
-                self.gauge_estimated_gpu_utilization[engine_idx].set(self.estimated_gpu_utilization / 100.0)
+                self.gauge_estimated_gpu_utilization[engine_idx].set(float(self.estimated_gpu_utilization) / 100.0)
 
             # Update Estimated GPU Memory utilization
             if self.estimated_gpu_memory_utilization is not None:
-                self.gauge_estimated_gpu_memory_utilization[engine_idx].set(self.estimated_gpu_memory_utilization / 100.0)
+                self.gauge_estimated_gpu_memory_utilization[engine_idx].set(float(self.estimated_gpu_memory_utilization) / 100.0)
 
             self.gauge_gpu_cache_usage[engine_idx].set(
                 scheduler_stats.kv_cache_usage
@@ -1162,7 +1172,7 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
             lora_info_labels = {
                 self.labelname_running_lora_adapters: running_lora_adapters,
                 self.labelname_waiting_lora_adapters: waiting_lora_adapters,
-                self.labelname_max_lora: self.max_lora,
+                self.labelname_max_lora: str(self.max_lora),
             }
             self.gauge_lora_info.labels(**lora_info_labels).set_to_current_time()
 
