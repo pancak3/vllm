@@ -88,6 +88,7 @@ if [ -n "$GPU_MEMORY_UTILIZATION" ]; then
       --host 0.0.0.0 \
       --port 8200 \
       --block-size $VLLM_BLOCK_SIZE \
+      --prefix-caching-hash-algo sha256 \
       --kv-transfer-config '{"kv_connector":"'"$KV_CONNECTOR"'", "kv_role":"kv_both"}' \
       --kv-events-config "{\"enable_kv_cache_events\":true,\"publisher\":\"zmq\",\"endpoint\":\"tcp://gaie-${GAIE_RELEASE_NAME_POSTFIX}-epp.${NAMESPACE}.svc.cluster.local:5557\",\"topic\":\"kv@${POD_IP}@$HF_MODEL\"}" \
       --disable-uvicorn-access-log \
@@ -101,6 +102,8 @@ if [ -n "$KV_CACHE_MEMORY" ]; then
       --max-num-seqs $MAX_NUM_SEQS \
       --host 0.0.0.0 \
       --port 8200 \
+      --block-size $VLLM_BLOCK_SIZE \
+      --prefix-caching-hash-algo sha256 \
       --kv-transfer-config '{"kv_connector":"'"$KV_CONNECTOR"'", "kv_role":"kv_both"}' \
       --kv-events-config "{\"enable_kv_cache_events\":true,\"publisher\":\"zmq\",\"endpoint\":\"tcp://gaie-${GAIE_RELEASE_NAME_POSTFIX}-epp.${NAMESPACE}.svc.cluster.local:5557\",\"topic\":\"kv@${POD_IP}@$HF_MODEL\"}" \
       --disable-uvicorn-access-log \
