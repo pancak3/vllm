@@ -1183,6 +1183,8 @@ class OpenAIServing:
                 prompt_token_ids=request_prompt,
             )
 
+        print(f"[*] Token IDs:\n{prompt_inputs['prompt_token_ids']}")
+
         engine_prompt = EngineTokensPrompt(
             prompt_token_ids=prompt_inputs["prompt_token_ids"]
         )
