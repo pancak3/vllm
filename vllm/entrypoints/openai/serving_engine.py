@@ -1138,7 +1138,7 @@ class OpenAIServing:
                 **_chat_template_kwargs,
             )
 
-        print(f"[*] Applied Chat Template Prompt:\n{request_prompt!r}")
+        logger.info(f"[*] Applied Chat Template Prompt:\n{request_prompt!r}")
 
         mm_data = await mm_data_future
 
@@ -1183,7 +1183,7 @@ class OpenAIServing:
                 prompt_token_ids=request_prompt,
             )
 
-        print(f"[*] Token IDs:\n{prompt_inputs['prompt_token_ids']}")
+        logger.info(f"[*] Token IDs:\n{prompt_inputs['prompt_token_ids']}")
 
         engine_prompt = EngineTokensPrompt(
             prompt_token_ids=prompt_inputs["prompt_token_ids"]
