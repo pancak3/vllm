@@ -1,0 +1,16 @@
+{
+    "name": "vscode-dev-vllm",
+    "image": "harbor.qifand.com/llm-infer/vllm-openai:latest",
+    "containerEnv": {
+        "SHELL": "/usr/bin/zsh"
+    },
+    "runArgs": [
+        "--name",
+        "vscode-dev-vllm-inference-scheduler"
+    ],
+    // mount /var/run/docker.sock to enable docker in docker
+    "mounts": [
+        "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+    ],
+    "remoteUser": "root" 
+}

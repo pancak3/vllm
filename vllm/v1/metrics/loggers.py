@@ -1150,30 +1150,13 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
                 lora_info_labels = {
                     self.labelname_running_lora_adapters: running_lora_adapters,
                     self.labelname_waiting_lora_adapters: waiting_lora_adapters,
-                    self.labelname_max_lora: self.max_lora,
+                    self.labelname_max_lora: str(self.max_lora),
                 }
                 self.gauge_lora_info.labels(**lora_info_labels).set_to_current_time()
 
         if mm_cache_stats is not None:
             self.counter_mm_cache_queries[engine_idx].inc(mm_cache_stats.queries)
             self.counter_mm_cache_hits[engine_idx].inc(mm_cache_stats.hits)
-        if self.gauge_lora_info is not None:
-            running_lora_adapters = ""
-            waiting_lora_adapters = ""
-            if iteration_stats is not None:
-                running_lora_adapters = ",".join(
-                    iteration_stats.running_lora_adapters.keys()
-                )
-                waiting_lora_adapters = ",".join(
-                    iteration_stats.waiting_lora_adapters.keys()
-                )
-            
-            lora_info_labels = {
-                self.labelname_running_lora_adapters: running_lora_adapters,
-                self.labelname_waiting_lora_adapters: waiting_lora_adapters,
-                self.labelname_max_lora: str(self.max_lora),
-            }
-            self.gauge_lora_info.labels(**lora_info_labels).set_to_current_time()
 
         if iteration_stats is None:
             return
