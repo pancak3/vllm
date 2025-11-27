@@ -110,17 +110,17 @@ if [ -n "$KV_CACHE_MEMORY" ]; then
       --kv-cache-memory $KV_CACHE_MEMORY 
 fi
 
-# HF_HOME=./ LMCACHE_MAX_LOCAL_CPU_SIZE=50 vllm serve Qwen/Qwen3-0.6B\
-#       --host 0.0.0.0 \
-#       --port 8200 \
-#         --kv-transfer-config \
-#         '{"kv_connector":"LMCacheConnectorV1",
-#         "kv_role":"kv_both"
-#         }' \
-#       --max-model-len 256 \
-#       --max-num-seqs 512 \
-#       --disable-uvicorn-access-log \
-#       --gpu-memory-utilization 0.85 
+HF_HOME=./ LMCACHE_MAX_LOCAL_CPU_SIZE=50 vllm serve Qwen/Qwen3-0.6B\
+      --host 0.0.0.0 \
+      --port 8200 \
+        --kv-transfer-config \
+        '{"kv_connector":"LMCacheConnectorV1",
+        "kv_role":"kv_both"
+        }' \
+      --max-model-len 256 \
+      --max-num-seqs 512 \
+      --disable-uvicorn-access-log \
+      --gpu-memory-utilization 0.85 
 
 # echo "Either GPU_MEMORY_UTILIZATION or KV_CACHE_MEMORY must be set."
 # exit -1

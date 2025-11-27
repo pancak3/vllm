@@ -1,23 +1,38 @@
-FROM vllm/vllm-openai:v0.11.0 AS builder
+FROM vllm/vllm-openai:v0.11.2 AS builder
 
-ARG VLLM_PKG_VERSION=0.0.0.dev0
-ENV SETUPTOOLS_SCM_PRETEND_VERSION=${VLLM_PKG_VERSION}
+ARG VLLM_PKG_VERSION=0.0.0.dev0+qifan
 ENV SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VLLM=${VLLM_PKG_VERSION}
 
 WORKDIR /tmp/vllm-build
 
+ENV BASE_DIR="/usr/local/lib/python3.12/dist-packages/nvidia"
+ENV TORCH_CUDA_ARCH_LIST="8.0"
+
+RUN for dir in "$BASE_DIR"/*; do \
+    if [ -d "$dir/include" ]; then \
+        echo "Linking headers from $dir..."; \
+        ln -sf "$dir/include/"* /usr/local/cuda/include/; \
+    fi; \
+    if [ -d "$dir/lib" ]; then \
+        echo "Linking libs from $dir..."; \
+        ln -sf "$dir/lib/"* /usr/local/cuda/lib64/; \
+    fi; \
+done
+
 # Pre-fetch runtime dependencies for offline installation and layer reuse.
 COPY requirements/common.txt /tmp/requirements/common.txt
 RUN set -eux; \
-	python3 -m pip download --no-cache-dir -r /tmp/requirements/common.txt -d /tmp/wheels; \
+	python3 -m pip wheel --no-cache-dir --no-build-isolation -r /tmp/requirements/common.txt --wheel-dir /tmp/wheels; \
 	python3 -m pip download --no-cache-dir torch==2.9.0 wheel -d /tmp/wheels
 
 # Copy the full source tree (filtered by .dockerignore) and build a wheel.
 COPY . /tmp/vllm-build
 RUN VLLM_USE_PRECOMPILED=1 \
+    VLLM_VERSION_OVERRIDE=${VLLM_PKG_VERSION} \
 	python3 -m pip wheel --no-deps --no-build-isolation --wheel-dir /tmp/wheels .
 
-FROM vllm/vllm-openai:v0.11.0
+FROM vllm/vllm-openai:v0.11.2
+ENV TORCH_CUDA_ARCH_LIST="8.0"
 
 WORKDIR /vllm-workspace
 
