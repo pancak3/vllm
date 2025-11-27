@@ -1,13 +1,8 @@
-FROM harbor.qifand.com/llm-infer/vllm-openai-base:latest AS builder
+FROM harbor.qifand.com/llm-infer/vllm-openai-base:latest
 
 COPY vllm.tar /tmp/vllm.tar
 RUN mkdir -p /tmp/project && cd /tmp/project && tar -xf /tmp/vllm.tar && \
 	cp -a /tmp/project/vllm/. /usr/local/lib/python3.12/dist-packages/vllm/
-
-
-FROM harbor.qifand.com/llm-infer/vllm-openai:latest
-
-COPY --from=builder /usr/local/lib/python3.12/dist-packages/ /usr/local/lib/python3.12/dist-packages/
 
 COPY ./docker/run.sh /usr/local/bin/run.sh
 RUN chmod +x /usr/local/bin/run.sh
