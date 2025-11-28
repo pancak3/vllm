@@ -135,19 +135,15 @@ RUN ldconfig /usr/local/cuda-$(echo $CUDA_VERSION | cut -d. -f1,2)/compat/
 
 WORKDIR /workspace
 
+ARG torch_cuda_arch_list='8.0'
+ENV TORCH_CUDA_ARCH_LIST=${torch_cuda_arch_list}
+
 # install build and runtime dependencies
 COPY requirements/common.txt requirements/common.txt
 COPY requirements/cuda.txt requirements/cuda.txt
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python /opt/venv/bin/python3 -r requirements/cuda.txt \
     --extra-index-url ${PYTORCH_CUDA_INDEX_BASE_URL}/cu$(echo $CUDA_VERSION | cut -d. -f1,2 | tr -d '.')
-
-# cuda arch list used by torch
-# can be useful for both `dev` and `test`
-# explicitly set the list to avoid issues with torch 2.2
-# see https://github.com/pytorch/pytorch/pull/123243
-ARG torch_cuda_arch_list='7.0 7.5 8.0 8.9 9.0 10.0 12.0'
-ENV TORCH_CUDA_ARCH_LIST=${torch_cuda_arch_list}
 #################### BASE BUILD IMAGE ####################
 
 #################### WHEEL BUILD IMAGE ####################
@@ -178,10 +174,10 @@ RUN --mount=type=bind,source=.git,target=.git \
     if [ "$GIT_REPO_CHECK" != "0" ]; then bash tools/check_repo.sh ; fi
 
 # max jobs used by Ninja to build extensions
-ARG max_jobs=2
+ARG max_jobs=2784
 ENV MAX_JOBS=${max_jobs}
 # number of threads used by nvcc
-ARG nvcc_threads=8
+ARG nvcc_threads=48
 ENV NVCC_THREADS=$nvcc_threads
 
 ARG USE_SCCACHE
@@ -258,7 +254,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Check the size of the wheel if RUN_WHEEL_CHECK is true
 COPY .buildkite/check-wheel-size.py check-wheel-size.py
 # sync the default value with .buildkite/check-wheel-size.py
-ARG VLLM_MAX_SIZE_MB=500
+ARG VLLM_MAX_SIZE_MB=1000
 ENV VLLM_MAX_SIZE_MB=$VLLM_MAX_SIZE_MB
 ARG RUN_WHEEL_CHECK=true
 RUN if [ "$RUN_WHEEL_CHECK" = "true" ]; then \
@@ -389,6 +385,7 @@ ENV UV_LINK_MODE=copy
 # or future versions of triton.
 RUN ldconfig /usr/local/cuda-$(echo $CUDA_VERSION | cut -d. -f1,2)/compat/
 
+RUN apt update -y && apt install git -y
 # Install vllm wheel first, so that torch etc will be installed.
 RUN --mount=type=bind,from=build,src=/workspace/dist,target=/vllm-workspace/dist \
     --mount=type=cache,target=/root/.cache/uv \

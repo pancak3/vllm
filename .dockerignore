@@ -9,7 +9,6 @@ docs/
 examples/
 shellcheck-stable/
 tests/
-tools/
 mkdocs/
 
 # Large artifacts not needed for build context
