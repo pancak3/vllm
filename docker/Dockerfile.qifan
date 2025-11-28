@@ -1,4 +1,4 @@
-FROM harbor.qifand.com/llm-infer/vllm-openai:latest
+FROM harbor.qifand.com/llm-infer/vllm-openai-cust:latest
 
 COPY vllm.tar /tmp/vllm.tar
 RUN mkdir -p /tmp/project && cd /tmp/project && tar -xf /tmp/vllm.tar && \
