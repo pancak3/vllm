@@ -322,6 +322,18 @@ class ReqMeta:
             else input_token_len
         )
 
+        num_blocks = len(tracker.allocated_block_ids)
+        if num_tokens_to_save > num_blocks * block_size:
+            logger.warning(
+                "The number of tokens to save (%d) is more than the number of blocks (%d * %d = %d)."
+                "Truncating to fit blocks.",
+                num_tokens_to_save,
+                num_blocks,
+                block_size,
+                num_blocks * block_size,
+            )
+            num_tokens_to_save = num_blocks * block_size
+
         # If we need to save, update the number of saved tokens
         if not skip_save:
             tracker.num_saved_tokens = num_tokens_to_save
@@ -340,8 +352,6 @@ class ReqMeta:
                 token_ids_tensor, tracker.mm_hashes, tracker.mm_positions
             )
             token_ids = token_ids_tensor.tolist()
-
-        num_blocks = len(tracker.allocated_block_ids)
 
         if len(token_ids) > num_blocks * block_size:
             logger.error(
