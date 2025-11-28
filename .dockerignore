@@ -2,11 +2,8 @@
 /build
 dist
 vllm/*.so
-.git
 .github
-benchmarks/
 docs/
-examples/
 shellcheck-stable/
 tests/
 mkdocs/
