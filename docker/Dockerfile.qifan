@@ -1,8 +1,17 @@
-FROM harbor.qifand.com/llm-infer/vllm-openai-cust:latest
+FROM harbor.qifand.com/llm-infer/vllm-openai-cust:latest as builder
 
-COPY vllm.tar /tmp/vllm.tar
-RUN mkdir -p /tmp/project && cd /tmp/project && tar -xf /tmp/vllm.tar && \
-	cp -a /tmp/project/vllm/. /usr/local/lib/python3.12/dist-packages/vllm/
+WORKDIR /workspace
+
+RUN apt update && apt install -y git
+RUN git clone https://github.com/pancak3/LMCache.git /workspace/LMCache \
+	&& cd /workspace/LMCache && git checkout zero-copy
+
+COPY vllm.tar /workspace/vllm.tar
+RUN  tar -xf /workspace/vllm.tar
+
+FROM harbor.qifand.com/llm-infer/vllm-openai-cust:latest
+COPY --from=builder /workspace/vllm/vllm /usr/local/lib/python3.12/dist-packages/vllm
+COPY --from=builder /workspace/LMCache/lmcache /usr/local/lib/python3.12/dist-packages/lmcache
 
 COPY ./docker/run.sh /usr/local/bin/run.sh
 RUN chmod +x /usr/local/bin/run.sh
