@@ -112,17 +112,28 @@ if [ -n "$KV_CACHE_MEMORY" ]; then
       --kv-cache-memory $KV_CACHE_MEMORY 
 fi
 
-HF_HOME=./ LMCACHE_MAX_LOCAL_CPU_SIZE=30 vllm serve Qwen/Qwen3-0.6B\
+HF_HOME=./ \
+NCCL_P2P_DISABLE=1 \
+VLLM_BLOCK_SIZE=16 \
+LMCACHE_ENABLE_CONTROLLER=false \
+LMCACHE_ENABLE_P2P=false \
+LMCACHE_ENABLE_ASYNC_LOADING=false \
+LMCACHE_LOCAL_CPU=true \
+LMCACHE_MAX_LOCAL_CPU_SIZE=30 \
+LMCACHE_USE_EXPERIMENTAL=true \
+LMCACHE_MAX_LOCAL_DISK_SIZE=300 \
+VLLM_USE_FLASHINFER_SAMPLER=1 \
+VLLM_ATTENTION_BACKEND=FLASHINFER \
+  vllm serve Qwen/Qwen3-0.6B \
       --host 0.0.0.0 \
       --port 8200 \
-        --kv-transfer-config \
-        '{"kv_connector":"LMCacheConnectorV1",
-        "kv_role":"kv_both"
-        }' \
+      --kv-transfer-config '{"kv_connector":"LMCacheConnectorV1", "kv_role":"kv_both" }' \
       --max-model-len 256 \
-      --max-num-seqs 256 \
+      --max-num-seqs 1024 \
       --disable-uvicorn-access-log \
-      --gpu-memory-utilization 0.85 
+      --async-scheduling \
+      --block-size 16 \
+      --gpu-memory-utilization 0.80
 
 HF_HOME=./ \
 VLLM_USE_FLASHINFER_SAMPLER=1 \
@@ -133,7 +144,7 @@ VLLM_ATTENTION_BACKEND=FLASHINFER \
       --max-model-len 256 \
       --max-num-seqs 1024 \
       --disable-uvicorn-access-log \
-      --gpu-memory-utilization 0.82 
+      --gpu-memory-utilization 0.80
 
 # echo "Either GPU_MEMORY_UTILIZATION or KV_CACHE_MEMORY must be set."
 # exit -1

@@ -372,7 +372,11 @@ class ReqMeta:
             + block_ids.reshape((num_blocks, 1)) * block_size
         )
 
-        slot_mapping = slot_mapping.flatten()[: len(token_ids)]
+        slot_mapping = slot_mapping.flatten()
+        # Safety check: ensure token_ids does not exceed available slots
+        if len(token_ids) > len(slot_mapping):
+            token_ids = token_ids[: len(slot_mapping)]
+        slot_mapping = slot_mapping[: len(token_ids)]
         assert slot_mapping.dtype == torch.long
 
         # For load operation: check whether the request is scheduled to load
@@ -971,6 +975,8 @@ class LMCacheConnectorV1Impl:
 
                 slot_mapping = request.slot_mapping
                 assert isinstance(slot_mapping, torch.Tensor)
+                slot_mapping = slot_mapping[:len(token_ids)]
+                token_ids = token_ids[: len(slot_mapping)]                
                 assert len(slot_mapping) == len(token_ids)
 
                 # TODO: have a pre-allocated buffer to hold the slot_mappings
@@ -1057,6 +1063,8 @@ class LMCacheConnectorV1Impl:
 
             slot_mapping = request.slot_mapping
             assert isinstance(slot_mapping, torch.Tensor)
+            slot_mapping = slot_mapping[:len(token_ids)]
+            token_ids = token_ids[: len(slot_mapping)]  
             assert len(slot_mapping) == len(token_ids)
             assert save_spec is not None
 
